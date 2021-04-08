@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <stdbool.h>
 
-
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
@@ -42,7 +41,7 @@ void connect_to_server(connection_info *connection, char *address, char *port) {
   while(true) {
     get_username(connection->username);
 
-    //Create socket
+    // Criando socket
     if ((connection->socket = socket(AF_INET, SOCK_STREAM , IPPROTO_TCP)) < 0) {
         perror("Não foi possível criar o socket");
     }
@@ -51,7 +50,7 @@ void connect_to_server(connection_info *connection, char *address, char *port) {
     connection->address.sin_family = AF_INET;
     connection->address.sin_port = htons(atoi(port));
 
-    //Connect to remote server
+    // Conectando ao servidor
     if (connect(connection->socket, (struct sockaddr *)&connection->address , sizeof(connection->address)) < 0) {
         perror("Falha na conexão.");
         exit(1);
@@ -76,6 +75,7 @@ void connect_to_server(connection_info *connection, char *address, char *port) {
 }
 
 void stop_client(connection_info *connection) {
+  // Encerrando o socket do cliente
   close(connection->socket);
   exit(0);
 }
@@ -149,7 +149,7 @@ void handle_user_input(connection_info *connection) {
 void handle_server_message(connection_info *connection) {
   message msg;
 
-  //Receive a reply from the server
+  // Recebendo as mensagens do servidor e realizando ações
   ssize_t recv_val = recv(connection->socket, &msg, sizeof(message), 0);
   if(recv_val < 0) {
       perror("Falha na recepção.");
@@ -210,7 +210,7 @@ int main(int argc, char *argv[]) {
 
   connect_to_server(&connection, "127.0.0.1", argv[1]);
 
-  //keep communicating with server
+  // Mantem a comunicação com o servidor
   while(true) {
     FD_ZERO(&file_descriptors);
     FD_SET(STDIN_FILENO, &file_descriptors);

@@ -9,28 +9,30 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-// #include <pthread.h>
-
 #include "./chatroom_utils.h"
 #include "./chatroom_utils.c"
 
-#define MAX_CLIENTS 4
+#define MAX_CLIENTS 100
 
 void initialize_server(connection_info *server_info, int port) {
+  // Criando socket master
   if((server_info->socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
     perror("Falha ao criar o socket");
     exit(1);
   }
 
+  // Tipo de socket
   server_info->address.sin_family = AF_INET;
   server_info->address.sin_addr.s_addr = INADDR_ANY;
   server_info->address.sin_port = htons(port);
 
+  // Ligando socket a porta definida
   if(bind(server_info->socket, (struct sockaddr *)&server_info->address, sizeof(server_info->address)) < 0) {
     perror("Falha na ligação");
     exit(1);
   }
 
+  // Definindo socket master para permitir múltiplas conexões
   const int optVal = 1;
   const socklen_t optLen = sizeof(optVal);
   if(setsockopt(server_info->socket, SOL_SOCKET, SO_REUSEADDR, (void*) &optVal, optLen) < 0) {
@@ -38,7 +40,7 @@ void initialize_server(connection_info *server_info, int port) {
     exit(1);
   }
 
-
+  // Especifica o máximo de 3 conexões pendenes para o socket mestre
   if(listen(server_info->socket, 3) < 0) {
     perror("Falha na escuta");
     exit(1);
@@ -48,6 +50,7 @@ void initialize_server(connection_info *server_info, int port) {
 }
 
 void stop_server(connection_info connection[]) {
+  // Encerra todos os sokets criados para os clientes e encerra a aplicação
   int i;
   for(i = 0; i < MAX_CLIENTS; i++) {
     close(connection[i].socket);
@@ -56,14 +59,18 @@ void stop_server(connection_info connection[]) {
 }
 
 int construct_fd_set(fd_set *set, connection_info *server_info, connection_info clients[]) {
+  // Limpa o conjunto de sockets e adiciona o socket master
   FD_ZERO(set);
   FD_SET(STDIN_FILENO, set);
   FD_SET(server_info->socket, set);
 
   int max_fd = server_info->socket;
+
+  // Adiciona os sockets filhos
   int i;
   for(i = 0; i < MAX_CLIENTS; i++) {
     if(clients[i].socket > 0) {
+      // Adicionando o descritor a lista de leitura
       FD_SET(clients[i].socket, set);
       if(clients[i].socket > max_fd) {
         max_fd = clients[i].socket;
@@ -73,6 +80,7 @@ int construct_fd_set(fd_set *set, connection_info *server_info, connection_info 
   return max_fd;
 }
 
+// Recebe as entradas na aplicação do servidor e realiza a ação
 void handle_user_input(connection_info clients[]) {
   char input[255];
   fgets(input, sizeof(input), stdin);
@@ -87,9 +95,10 @@ void handle_user_input(connection_info clients[]) {
   }
 }
 
+// Envia uma mensagem quando o chatroom está cheio
 void send_too_full_message(int socket) {
   message too_full_message;
-//  too_full_message.type = TOO_FULL;
+  too_full_message.type = TOO_FULL;
 
   if(send(socket, &too_full_message, sizeof(too_full_message), 0) < 0) {
       perror("Falha no envio.");
@@ -114,7 +123,8 @@ void handle_new_connection(connection_info *server_info, connection_info clients
     if(clients[i].socket == 0) {
       clients[i].socket = new_socket;
       break;
-    } else if (i == MAX_CLIENTS -1) { // if we can accept no more clients
+    } else if (i == MAX_CLIENTS -1) { 
+      // Envia a mensagem quando o servidor está cheio
       send_too_full_message(new_socket);
     }
   }
@@ -252,7 +262,6 @@ void handle_client_message(connection_info clients[], int sender) {
 
         strcpy(clients[sender].username, msg.username);
         printf(KGRN "%s entrou." RESET "\n", clients[sender].username);
-        // printf("Usuário conectado: %s\n", clients[sender].username);
         send_connect_message(clients, sender);
       break;
 
@@ -271,20 +280,22 @@ void handle_client_message(connection_info clients[], int sender) {
   }
 }
 
-
-
 int main(int argc, char *argv[]) {
   printf(KBLU "Iniciando o chatroom." RESET "\n");
 
+  // Conjunto de descritores de socket
   fd_set file_descriptors;
   connection_info server_info;
   connection_info clients[MAX_CLIENTS];
 
+  // Inicializa todos os sockets dos clientes como 0
+  // Portanto não assinalado, vazio
   int i;
   for(i = 0; i < MAX_CLIENTS; i++) {
     clients[i].socket = 0;
   }
 
+  // Instrução de execução do servidor
   if (argc != 2) {
     fprintf(stderr, KRED "Uso: %s <porta>" RESET "\n", argv[0]);
     exit(1);
@@ -295,19 +306,23 @@ int main(int argc, char *argv[]) {
   while(true) {
     int max_fd = construct_fd_set(&file_descriptors, &server_info, clients);
     
+    // Selecionar descritor ativo
     if(select(max_fd+1, &file_descriptors, NULL, NULL, NULL) < 0) {
       perror("Falha na seleção.");
       stop_server(clients);
     }
 
+    // Entrada na aplicação do servidor
     if(FD_ISSET(STDIN_FILENO, &file_descriptors)) {
       handle_user_input(clients);
     }
-
+    
+    // Pedido de conexão de cliente
     if(FD_ISSET(server_info.socket, &file_descriptors)) {
       handle_new_connection(&server_info, clients);
     }
 
+    // Tratamento das ações do cliente
     for(i = 0; i < MAX_CLIENTS; i++) {
       if(clients[i].socket > 0 && FD_ISSET(clients[i].socket, &file_descriptors)) {
         handle_client_message(clients, i);
